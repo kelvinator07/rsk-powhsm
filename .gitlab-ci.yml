@@ -1,0 +1,97 @@
+default:
+  before_script:
+    - pushd $CI_PROJECT_DIR
+    - ROOT_DIR=$(pwd)
+    - popd
+    - NETWORK=$(cat $ROOT_DIR/version.txt | grep NETWORK | awk '{print $2}')
+    - VERSION=$(cat $ROOT_DIR/version.txt | grep VERSION | awk '{print $2}')
+    - DO_PR=$(cat $ROOT_DIR/version.txt | grep DO_PR | awk '{print $2}')
+    - DOCKER_CACHE=$(cat $ROOT_DIR/version.txt | grep DOCKER_CACHE | awk '{print $2}')
+    - git clone https://${GITHUB_TOKEN}:x-oauth-basic@github.com/rootstock/powpeg-node-setup.git $ROOT_DIR/github_final
+    - >-
+        if [ "$DO_PR" == "yes" ]; then
+          cd $ROOT_DIR/github_final &&
+          if git rev-parse "$VERSION" > /dev/null 2>&1; then
+            echo "Tag already exists. Cancelling ...";
+            false;
+          fi
+        fi
+    - BUILD_TAG_HSM2=$(cat $ROOT_DIR/version.txt | grep BUILD_TAG_HSM2 | awk '{print $2}')
+    - CHECKPOINT=$(cat $ROOT_DIR/version.txt | grep CHECKPOINT | awk '{print $2}')
+    - DIFFICULTY=$(cat $ROOT_DIR/version.txt | grep DIFFICULTY | awk '{print $2}')
+    - >-
+        if [ -z "$BUILD_TAG_HSM2" ]; then
+          BUILD_TAG_HSM2="master";
+        fi
+    - git clone -b $BUILD_TAG_HSM2 https://hsm-ci:${CI_JOB_TOKEN}@gitlab.rsklabs.io/hsm/hsm2.git $ROOT_DIR/hsm2_source
+    - DOCKER_BUILD_CMD=rebuild
+    - >-
+        if [ "$DOCKER_CACHE" == "yes" ]; then
+          DOCKER_BUILD_CMD=build
+        fi
+    - $ROOT_DIR/hsm2_source/docker/ledger/$DOCKER_BUILD_CMD
+    - $ROOT_DIR/hsm2_source/docker/mware/$DOCKER_BUILD_CMD
+    - >-
+        if [ -d $ROOT_DIR/hsm2_source/docker/packer ]; then
+          $ROOT_DIR/hsm2_source/docker/packer/$DOCKER_BUILD_CMD
+        fi
+  after_script:
+    - docker rmi hsm:mware hsm:ledger hsm:packer
+
+build:
+  script:
+    - $ROOT_DIR/hsm/build-dist $ROOT_DIR/hsm2_source $CHECKPOINT $DIFFICULTY $NETWORK
+    - rm -rf $ROOT_DIR/github_final/federation_node
+    - cp -r $ROOT_DIR/federation_node/server $ROOT_DIR/github_final/federation_node
+    - rm -rf $ROOT_DIR/github_final/hsm
+    - cp -r $ROOT_DIR/hsm/dist $ROOT_DIR/github_final/hsm
+    - rm -f $ROOT_DIR/github_final/hsm/.gitignore
+    - echo "Created by Pipeline" >> $ROOT_DIR/sha
+    - echo "===================" >> $ROOT_DIR/sha
+    - echo "" >> $ROOT_DIR/sha
+    - echo "Build parameters:" >> $ROOT_DIR/sha
+    - echo "-----------------" >> $ROOT_DIR/sha
+    - echo "\`\`\`" >> $ROOT_DIR/sha
+    - echo "Tag $BUILD_TAG_HSM2" >> $ROOT_DIR/sha
+    - echo "Checkpoint $CHECKPOINT" >> $ROOT_DIR/sha
+    - echo "Difficulty $DIFFICULTY" >> $ROOT_DIR/sha
+    - echo "Network $NETWORK" >> $ROOT_DIR/sha
+    - echo "\`\`\`" >> $ROOT_DIR/sha
+    - echo "" >> $ROOT_DIR/sha
+    - echo "Middleware:" >> $ROOT_DIR/sha
+    - echo "-----------" >> $ROOT_DIR/sha
+    - echo "\`\`\`" >> $ROOT_DIR/sha
+    - sha256sum $ROOT_DIR/github_final/federation_node/hsm2/bin/manager.tgz >> $ROOT_DIR/sha
+    - sha256sum $ROOT_DIR/github_final/hsm/bin/adm.tgz >> $ROOT_DIR/sha
+    - sha256sum $ROOT_DIR/github_final/hsm/bin/lbutils.tgz >> $ROOT_DIR/sha
+    - echo "\`\`\`" >> $ROOT_DIR/sha
+    - echo "" >> $ROOT_DIR/sha
+    - echo "Firmware:" >> $ROOT_DIR/sha
+    - echo "---------" >> $ROOT_DIR/sha
+    - echo "\`\`\`" >> $ROOT_DIR/sha
+    - $ROOT_DIR/hsm/tools/signapp hash -a dist/firmware/signer.hex | grep "App hash:" | sed "s/App hash:/Signer hash:/g" >> $ROOT_DIR/sha
+    - $ROOT_DIR/hsm/tools/signapp hash -a dist/firmware/ui.hex  | grep "App hash:" | sed "s/App hash:/UI hash:/g" >> $ROOT_DIR/sha
+    - echo "\`\`\`" >> $ROOT_DIR/sha
+    - PR_DESCRIPTION=$(cat $ROOT_DIR/sha | sed -E ':a;N;$!ba;s/\r{0,1}\n/\\n/g') # Replace newlines with literal '\n's
+    - mv $ROOT_DIR/sha $ROOT_DIR/github_final/hashes
+    - >-
+        [ "$DO_PR" == "yes" ] &&
+        cd $ROOT_DIR/github_final &&
+        git checkout -b $VERSION &&
+        git config --global user.email "release@iovlabs.org" &&
+        git config --global user.name "ci" &&
+        git add * &&
+        git commit -m $VERSION &&
+        git push --force origin $VERSION
+    - >-
+        [ "$DO_PR" == "yes" ] &&
+        curl -s -X POST -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/vnd.github.v3+json"
+        https://api.github.com/repos/rootstock/powpeg-node-setup/pulls
+        -d "{
+            \"title\": \"${VERSION}\",
+            \"head\": \"${VERSION}\",
+            \"base\": \"main\",
+            \"draft\": true,
+            \"body\": \"${PR_DESCRIPTION%$'\r'}\"
+            }"
+    - echo

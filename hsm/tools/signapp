@@ -1,0 +1,27 @@
+#!/bin/bash
+
+if [[ ! -e "$(dirname $0)/bin/signapp.tgz" ]]; then
+    echo -e "\e[31mMissing binary. Please do a distribution build first.\e[0m"
+    exit 1
+fi
+
+pushd $(dirname $0)/.. > /dev/null
+ROOT_DIR=$(pwd)
+popd > /dev/null
+
+DOCKER_IMAGE=hsm2:runtime
+
+echo -e "\e[96mBuilding docker image $DOCKER_IMAGE (this could take a few minutes)..."
+docker build -q -t $DOCKER_IMAGE $ROOT_DIR/tools
+echo -e "\e[96mDocker image build done.\e[0m"
+echo
+
+# Expand signapp.tgz
+rm -rf $ROOT_DIR/tools/bin/signapp
+mkdir -p $ROOT_DIR/tools/bin/signapp
+tar -xzmf $ROOT_DIR/tools/bin/signapp.tgz -C $ROOT_DIR/tools/bin/signapp
+
+docker run -t --rm -v $ROOT_DIR:/hsm -v /dev/bus/usb:/dev/bus/usb --privileged -w /hsm $DOCKER_IMAGE tools/bin/signapp/signapp $@
+
+# Cleanup signapp.tgz
+rm -rf $ROOT_DIR/tools/bin/signapp

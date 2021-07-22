@@ -1,0 +1,53 @@
+version: "3"
+services:
+  bitcoind:
+   build: ./bitcoind
+   image: bitcond:latest
+   container_name: bitcoind01
+   ports:
+     - "8333"
+   volumes:
+     - /bitcoind:/root/.bitcoin
+   networks:
+     - net_bitcoin
+
+  hsm2:
+    privileged: true
+    env_file: ./hsm2/env
+    build: ./hsm2
+    ports:
+      - "9999"
+    image: hsm2:latest
+    container_name: hsm2
+    volumes:
+      - /dev/bus/usb:/dev/bus/usb
+      - ./hsm2:/hsm
+      - ./logs:/logs
+    networks:
+      - net_hsm
+
+  fed:
+   image: fednode:latest
+   container_name: fednode01
+   build: ./fednode
+   depends_on:
+     - bitcoind
+     - hsm2
+   ports:
+     - "4444:4444"
+     - "5050:5050"
+     - "5050:5050/udp"
+     - "2222:22"
+   volumes:
+     - /var/lib/rsk:/var/lib/rsk
+     - /var/log/rsk:/var/log/rsk
+     - ~/powpeg-node-setup/federation_node/fednode/config:/etc/rsk
+   networks:
+     - net_bitcoin
+     - net_hsm
+
+networks:
+  net_bitcoin:
+    driver: "bridge"
+  net_hsm:
+    driver: "bridge"
