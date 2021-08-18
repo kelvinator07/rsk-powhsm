@@ -1,0 +1,136 @@
+name: Prepare PR for powpeg-node-setup
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    name: Build and PR
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v2
+
+      - name: Get configuration parameters
+        run: |
+          . ./version.txt
+
+          # Fail if any of this is empty
+          [ -n "$CHECKPOINT" ] && [ -n "$DIFFICULTY" ] && [ -n "$NETWORK" ] &&
+              [ -n "$VERSION" ] || exit 1
+
+          echo "CHECKPOINT=$CHECKPOINT" >> $GITHUB_ENV
+          echo "DIFFICULTY=$DIFFICULTY" >> $GITHUB_ENV
+          echo "NETWORK=$NETWORK" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "BUILD_TAG_HSM2=${BUILD_TAG_HSM2:-master}" >> $GITHUB_ENV
+          echo "DO_PR=${DO_PR:-yes}" >> $GITHUB_ENV
+
+      - name: Create PR working directory
+        run: |
+          tmpd=$(mktemp -d ./pr-workdir-XXXXXX) || exit 1
+          echo "PR_WORKDIR=$tmpd" >> $GITHUB_ENV
+
+      - name: Checkout powpeg-node-setup
+        uses: actions/checkout@v2
+        with:
+          repository: rootstock/powpeg-node-setup
+          path: ${{ env.PR_WORKDIR }}/powpeg-node-setup
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Validate powpeg-node-setup tag
+        if: ${{ env.DO_PR }} == "yes"
+        run: |
+          if git show-ref -q --tags "$VERSION"; then
+            echo "Tag already exists; cancelling"
+            exit 1
+          fi
+
+      - name: Checkout rsk-powhsm
+        uses: actions/checkout@v2
+        with:
+          repository: rsksmart/rsk-powhsm
+          ref: ${{ env.BUILD_TAG_HSM2 }}
+          path: ${{ env.PR_WORKDIR }}/hsm2
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Prepare Docker images
+        run: |
+          "$PR_WORKDIR/hsm2/docker/ledger/build"
+          "$PR_WORKDIR/hsm2/docker/mware/build"
+          if [ -d "$PR_WORKDIR/hsm2/docker/packer" ]; then
+            "$PR_WORKDIR/hsm2/docker/packer/build"
+          fi
+
+      - name: Build rsk-powhsm
+        run: |
+          ./hsm-builder/build-dist "$PR_WORKDIR/hsm2" "$CHECKPOINT" "$DIFFICULTY" "$NETWORK"
+          (cd "$PR_WORKDIR/powpeg-node-setup" && rm -fr federation_node hsm)
+          cp -R federation_node/server "$PR_WORKDIR/powpeg-node-setup/federation_node"
+          cp -R hsm-builder/dist "$PR_WORKDIR/powpeg-node-setup/hsm"
+          rm -f "$PR_WORKDIR/powpeg-node-setup/hsm/.gitignore"
+
+          middleware_hashes=$(cd "$PR_WORKDIR/powpeg-node-setup" && sha256sum \
+            federation_node/hsm2/bin/manager.tgz \
+            hsm/bin/adm.tgz \
+            hsm/bin/lbutils.tgz)
+
+          firmware_hashes=$(
+            ./hsm-builder/tools/signapp hash -a dist/firmware/signer.hex |
+              sed -n "/App hash:/s/App hash:/Signer hash:/gp"
+            ./hsm-builder/tools/signapp hash -a dist/firmware/ui.hex |
+              sed -n "/App hash:/s/App hash:/UI hash:/gp"
+          )
+
+          cat - <<EOF >"$PR_WORKDIR/powpeg-node-setup/hashes"
+          Created by Pipeline
+          ===================
+
+          Build parameters
+          ----------------
+
+          \`\`\`
+          Tag $BUILD_TAG_HSM2
+          Checkpoint $CHECKPOINT
+          Difficulty $DIFFICULTY
+          Network $NETWORK
+          \`\`\`
+
+          Middleware
+          ----------
+
+          \`\`\`
+          $middleware_hashes
+          \`\`\`
+
+          Firmware
+          --------
+
+          \`\`\`
+          $firmware_hashes
+          \`\`\`
+          EOF
+
+      - name: Create PR
+        if: ${{ env.DO_PR }} == "yes"
+        working-directory: ${{ env.PR_WORKDIR }}/powpeg-node-setup
+        env:
+          GHCLI_LOGIN_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          branch=pr-$VERSION
+          git switch -c "$branch"
+          git config user.email "release@iovlabs.org"
+          git config user.name "CI"
+          git add -A
+          git commit -m "$VERSION"
+          git push origin "$branch"
+
+          # Safely get GHCLI_LOGIN_TOKEN from environment *without* exposing
+          # in in the CLI.
+          env | sed -n '/^GHCLI_LOGIN_TOKEN=/s/^GHCLI_LOGIN_TOKEN=//p' |
+            gh auth login --with-token
+
+          gh pr create -d -t "$VERSION" -F hashes
