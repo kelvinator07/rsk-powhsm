@@ -22,12 +22,15 @@ MANAGERBIN_DIR=$ROOT_DIR/../federation_node/server/hsm2/bin
 
 pushd $REPO_DIR > /dev/null
 
-# Grab tag and confirm build
-TAG=$(git describe --tags 2> /dev/null)
+# GitHub Action checkout doesn't include tag information
+if ! ${CI:-false}; then
+    # Grab tag and confirm build
+    TAG=$(git describe --tags 2> /dev/null)
 
-if [[ $? -ne 0 ]]; then
-    echo -e "\e[31mThe directory '$REPO_DIR' doesn't contain a valid git repository."
-    exit 1
+    if [[ $? -ne 0 ]]; then
+        echo -e "\e[31mThe directory '$REPO_DIR' doesn't contain a valid git repository."
+        exit 1
+    fi
 fi
 
 if [[ $# -lt 4 ]]; then
@@ -56,7 +59,7 @@ else
 fi
 
 rm -rf $DEST_DIR
-$REPO_DIR/build-dist $DEST_DIR $CHECKPOINT $DIFFICULTY $NETWORK
+./build-dist $DEST_DIR $CHECKPOINT $DIFFICULTY $NETWORK
 mkdir -p $MANAGERBIN_DIR
 mkdir -p $TOOLSBIN_DIR
 mv -f $BIN_DIR/manager.tgz $MANAGERBIN_DIR/manager.tgz
