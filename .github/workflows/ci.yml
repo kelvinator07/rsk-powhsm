@@ -69,15 +69,17 @@ jobs:
         run: |
           ./hsm-builder/build-dist "$PR_WORKDIR/hsm2" "$CHECKPOINT" "$DIFFICULTY" "$NETWORK"
           (cd "$PR_WORKDIR/powpeg-node-setup" && rm -fr federation_node hsm)
-          cp -R federation_node/server "$PR_WORKDIR/powpeg-node-setup/federation_node"
-          cp -R hsm-builder/dist "$PR_WORKDIR/powpeg-node-setup/hsm"
+          mv federation_node/server "$PR_WORKDIR/powpeg-node-setup/federation_node"
+          mv hsm-builder/dist "$PR_WORKDIR/powpeg-node-setup/hsm"
           rm -f "$PR_WORKDIR/powpeg-node-setup/hsm/.gitignore"
 
           middleware_hashes=$(cd "$PR_WORKDIR/powpeg-node-setup" && sha256sum \
             federation_node/hsm2/bin/manager.tgz \
             hsm/bin/adm.tgz \
-            hsm/bin/lbutils.tgz)
+            hsm/bin/lbutils.tgz \
+            hsm/bin/signapp.tgz)
 
+          mv "$PR_WORKDIR/powpeg-node-setup/hsm/bin/signapp.tgz" hsm-builder/tools/bin/
           firmware_hashes=$(
             ./hsm-builder/tools/signapp hash -a dist/firmware/signer.hex |
               sed -n "/App hash:/s/App hash:/Signer hash:/gp"

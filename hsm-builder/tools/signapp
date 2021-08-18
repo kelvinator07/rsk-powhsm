@@ -5,23 +5,24 @@ if [[ ! -e "$(dirname $0)/bin/signapp.tgz" ]]; then
     exit 1
 fi
 
-pushd $(dirname $0)/.. > /dev/null
-ROOT_DIR=$(pwd)
+pushd $(dirname $0) > /dev/null
+TOOLS_DIR=$(pwd)
+BUILD_DIR=$TOOLS_DIR/../..
 popd > /dev/null
 
 DOCKER_IMAGE=hsm2:runtime
 
 echo -e "\e[96mBuilding docker image $DOCKER_IMAGE (this could take a few minutes)..."
-docker build -q -t $DOCKER_IMAGE $ROOT_DIR/tools
+docker build -q -t $DOCKER_IMAGE $TOOLS_DIR
 echo -e "\e[96mDocker image build done.\e[0m"
 echo
 
 # Expand signapp.tgz
-rm -rf $ROOT_DIR/tools/bin/signapp
-mkdir -p $ROOT_DIR/tools/bin/signapp
-tar -xzmf $ROOT_DIR/tools/bin/signapp.tgz -C $ROOT_DIR/tools/bin/signapp
+rm -rf $TOOLS_DIR/bin/signapp
+mkdir -p $TOOLS_DIR/bin/signapp
+tar -xzmf $TOOLS_DIR/bin/signapp.tgz -C $TOOLS_DIR/bin/signapp
 
-docker run -t --rm -v $ROOT_DIR:/hsm -v /dev/bus/usb:/dev/bus/usb --privileged -w /hsm $DOCKER_IMAGE tools/bin/signapp/signapp $@
+docker run -t --rm -v $BUILD_DIR:/build -v /dev/bus/usb:/dev/bus/usb --privileged -w /build/hsm $DOCKER_IMAGE ../hsm-builder/tools/bin/signapp/signapp $@
 
 # Cleanup signapp.tgz
-rm -rf $ROOT_DIR/tools/bin/signapp
+rm -rf $TOOLS_DIR/bin/signapp

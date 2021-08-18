@@ -1,6 +1,2 @@
-sha
-hsm2_source
-github_final
-hsm/dist
-hsm/tools/bin
+hsm-builder/tools/bin
 federation_node/server/hsm2/bin
