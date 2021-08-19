@@ -27,6 +27,7 @@ jobs:
           echo "NETWORK=$NETWORK" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "BUILD_TAG_HSM2=${BUILD_TAG_HSM2:-master}" >> $GITHUB_ENV
+          echo "BASE_BRANCH=${BASE_BRANCH:-main}" >> $GITHUB_ENV
           echo "DO_PR=${DO_PR:-yes}" >> $GITHUB_ENV
 
       - name: Create PR working directory
@@ -38,6 +39,7 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: rootstock/powpeg-node-setup
+          ref: ${{ env.BASE_BRANCH }}
           path: ${{ env.PR_WORKDIR }}/powpeg-node-setup
           token: ${{ secrets.GH_PAT }}
 
@@ -135,4 +137,4 @@ jobs:
           env | sed -n '/^GHCLI_LOGIN_TOKEN=/s/^GHCLI_LOGIN_TOKEN=//p' |
             gh auth login --with-token
 
-          gh pr create -d -t "$VERSION" -F hashes
+          gh pr create -d -t "$VERSION" -F hashes -B "$BASE_BRANCH"
