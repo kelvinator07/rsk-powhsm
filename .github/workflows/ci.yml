@@ -2,8 +2,7 @@ name: Prepare PR for powpeg-node-setup
 
 on:
   push:
-    branches:
-      - master
+  pull_request:
 
 jobs:
   build:
@@ -44,7 +43,7 @@ jobs:
           token: ${{ secrets.GH_PAT }}
 
       - name: Validate powpeg-node-setup tag
-        if: ${{ env.DO_PR == 'yes' }}
+        if: ${{ github.ref == 'refs/heads/master' && env.DO_PR == 'yes' }}
         run: |
           if git show-ref -q --tags "$VERSION"; then
             echo "Tag already exists; cancelling"
@@ -119,7 +118,7 @@ jobs:
           EOF
 
       - name: Create PR
-        if: ${{ env.DO_PR == 'yes' }}
+        if: ${{ github.ref == 'refs/heads/master' && env.DO_PR == 'yes' }}
         working-directory: ${{ env.PR_WORKDIR }}/powpeg-node-setup
         env:
           GHCLI_LOGIN_TOKEN: ${{ secrets.GH_PAT }}
