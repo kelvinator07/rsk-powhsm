@@ -2,7 +2,11 @@ name: Prepare PR for powpeg-node-setup
 
 on:
   push:
+    branches:
+      - hsm-builds
   pull_request:
+    branches:
+      - hsm-builds
 
 jobs:
   build:
@@ -15,7 +19,7 @@ jobs:
 
       - name: Get configuration parameters
         run: |
-          . ./version.txt
+          . ./hsm-builder/build-config
 
           # Fail if any of this is empty
           [ -n "$CHECKPOINT" ] && [ -n "$DIFFICULTY" ] && [ -n "$NETWORK" ] &&
@@ -27,7 +31,7 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "BUILD_TAG_HSM2=${BUILD_TAG_HSM2:-master}" >> $GITHUB_ENV
           echo "BASE_BRANCH=${BASE_BRANCH:-main}" >> $GITHUB_ENV
-          echo "DO_PR=${DO_PR:-yes}" >> $GITHUB_ENV
+          echo "DO_PR=${DO_PR:-no}" >> $GITHUB_ENV
 
       - name: Create PR working directory
         run: |
@@ -43,7 +47,7 @@ jobs:
           token: ${{ secrets.GH_PAT }}
 
       - name: Validate powpeg-node-setup tag
-        if: ${{ github.ref == 'refs/heads/master' && env.DO_PR == 'yes' }}
+        if: env.DO_PR == 'yes'
         run: |
           if git show-ref -q --tags "$VERSION"; then
             echo "Tag already exists; cancelling"
@@ -81,10 +85,16 @@ jobs:
             hsm/bin/signapp.tgz)
 
           mv "$PR_WORKDIR/powpeg-node-setup/hsm/bin/signapp.tgz" hsm-builder/tools/bin/
+
+          fwdir=hsm-builder/dist/firmware
+          mkdir -p "$fwdir"
+          cp "$PR_WORKDIR/powpeg-node-setup/hsm/firmware/signer.hex" "$fwdir"
+          cp "$PR_WORKDIR/powpeg-node-setup/hsm/firmware/ui.hex" "$fwdir"
+
           firmware_hashes=$(
-            ./hsm-builder/tools/signapp hash -a dist/firmware/signer.hex |
+            ./hsm-builder/tools/signapp hash -a ../hsm-builder/dist/firmware/signer.hex |
               sed -n "/App hash:/s/App hash:/Signer hash:/gp"
-            ./hsm-builder/tools/signapp hash -a dist/firmware/ui.hex |
+            ./hsm-builder/tools/signapp hash -a ../hsm-builder/dist/firmware/ui.hex |
               sed -n "/App hash:/s/App hash:/UI hash:/gp"
           )
 
@@ -118,7 +128,7 @@ jobs:
           EOF
 
       - name: Create PR
-        if: ${{ github.ref == 'refs/heads/master' && env.DO_PR == 'yes' }}
+        if: env.DO_PR == 'yes'
         working-directory: ${{ env.PR_WORKDIR }}/powpeg-node-setup
         env:
           GHCLI_LOGIN_TOKEN: ${{ secrets.GH_PAT }}
