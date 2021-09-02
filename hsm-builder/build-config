@@ -4,4 +4,4 @@ NETWORK=regtest
 BUILD_TAG_HSM2=master
 VERSION=2.1.0-dev
 TARGET_BRANCH=main
-DO_PR=yes
+DO_PR=no

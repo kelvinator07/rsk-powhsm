@@ -2,7 +2,11 @@ name: Prepare PR for powpeg-node-setup
 
 on:
   push:
+    branches:
+      - hsm-builds
   pull_request:
+    branches:
+      - hsm-builds
 
 jobs:
   build:
@@ -15,7 +19,7 @@ jobs:
 
       - name: Get configuration parameters
         run: |
-          . ./version.txt
+          . ./hsm-builder/build-config
 
           # Fail if any of this is empty
           [ -n "$CHECKPOINT" ] && [ -n "$DIFFICULTY" ] && [ -n "$NETWORK" ] &&
@@ -27,7 +31,7 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "BUILD_TAG_HSM2=${BUILD_TAG_HSM2:-master}" >> $GITHUB_ENV
           echo "BASE_BRANCH=${BASE_BRANCH:-main}" >> $GITHUB_ENV
-          echo "DO_PR=${DO_PR:-yes}" >> $GITHUB_ENV
+          echo "DO_PR=${DO_PR:-no}" >> $GITHUB_ENV
 
       - name: Create PR working directory
         run: |
@@ -42,11 +46,12 @@ jobs:
           path: ${{ env.PR_WORKDIR }}/powpeg-node-setup
           token: ${{ secrets.GH_PAT }}
 
-      - name: Validate powpeg-node-setup tag
-        if: ${{ github.ref == 'refs/heads/master' && env.DO_PR == 'yes' }}
+      - name: Validate powpeg-node-setup target branch
+        working-directory: ${{ env.PR_WORKDIR }}/powpeg-node-setup
+        if: env.DO_PR == 'yes'
         run: |
-          if git show-ref -q --tags "$VERSION"; then
-            echo "Tag already exists; cancelling"
+          if git show-ref -q --heads "$VERSION"; then
+            echo "Target branch already exists; cancelling"
             exit 1
           fi
 
@@ -69,24 +74,21 @@ jobs:
       - name: Build rsk-powhsm
         run: |
           ./hsm-builder/build-dist "$PR_WORKDIR/hsm2" "$CHECKPOINT" "$DIFFICULTY" "$NETWORK"
-          (cd "$PR_WORKDIR/powpeg-node-setup" && rm -fr federation_node hsm)
-          mv federation_node/server "$PR_WORKDIR/powpeg-node-setup/federation_node"
-          mv hsm-builder/dist "$PR_WORKDIR/powpeg-node-setup/hsm"
-          rm -f "$PR_WORKDIR/powpeg-node-setup/hsm/.gitignore"
 
-          middleware_hashes=$(cd "$PR_WORKDIR/powpeg-node-setup" && sha256sum \
-            federation_node/hsm2/bin/manager.tgz \
-            hsm/bin/adm.tgz \
-            hsm/bin/lbutils.tgz \
-            hsm/bin/signapp.tgz)
+          middleware_hashes=$(sha256sum \
+            federation_node/server/hsm2/bin/manager.tgz \
+            hsm-builder/dist/bin/adm.tgz \
+            hsm-builder/dist/bin/lbutils.tgz \
+            hsm-builder/dist/bin/signapp.tgz)
 
-          mv "$PR_WORKDIR/powpeg-node-setup/hsm/bin/signapp.tgz" hsm-builder/tools/bin/
           firmware_hashes=$(
-            ./hsm-builder/tools/signapp hash -a dist/firmware/signer.hex |
+            ./hsm-builder/tools/signapp hash -a ../dist/firmware/signer.hex |
               sed -n "/App hash:/s/App hash:/Signer hash:/gp"
-            ./hsm-builder/tools/signapp hash -a dist/firmware/ui.hex |
+            ./hsm-builder/tools/signapp hash -a ../dist/firmware/ui.hex |
               sed -n "/App hash:/s/App hash:/UI hash:/gp"
           )
+
+          (cd "$PR_WORKDIR/powpeg-node-setup" && rm -fr federation_node hsm)
 
           cat - <<EOF >"$PR_WORKDIR/powpeg-node-setup/hashes"
           Created by Pipeline
@@ -117,19 +119,23 @@ jobs:
           \`\`\`
           EOF
 
+          mv federation_node/server "$PR_WORKDIR/powpeg-node-setup/federation_node"
+          mv hsm-builder/dist "$PR_WORKDIR/powpeg-node-setup/hsm"
+          mv hsm-builder/tools "$PR_WORKDIR/powpeg-node-setup/hsm/"
+          rm -f "$PR_WORKDIR/powpeg-node-setup/hsm/.gitignore"
+
       - name: Create PR
-        if: ${{ github.ref == 'refs/heads/master' && env.DO_PR == 'yes' }}
+        if: env.DO_PR == 'yes' && github.event_name == 'push'
         working-directory: ${{ env.PR_WORKDIR }}/powpeg-node-setup
         env:
           GHCLI_LOGIN_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          branch=pr-$VERSION
-          git switch -c "$branch"
+          git switch -c "$VERSION"
           git config user.email "release@iovlabs.org"
           git config user.name "CI"
           git add -A
           git commit -m "$VERSION"
-          git push origin "$branch"
+          git push origin "$VERSION"
 
           # Safely get GHCLI_LOGIN_TOKEN from environment *without* exposing
           # in in the CLI.
