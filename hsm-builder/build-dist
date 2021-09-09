@@ -23,7 +23,7 @@ MANAGERBIN_DIR=$ROOT_DIR/../federation_node/server/hsm2/bin
 pushd $REPO_DIR > /dev/null
 
 # GitHub Action checkout doesn't include tag information
-if ! ${CI:-false}; then
+if [[ ${CI:-false} != true ]]; then
     # Grab tag and confirm build
     TAG=$(git describe --tags 2> /dev/null)
 
