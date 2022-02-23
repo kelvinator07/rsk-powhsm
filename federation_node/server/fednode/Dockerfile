@@ -1,5 +1,5 @@
 FROM ubuntu:latest as runner
-ENV RSK_VERSION 2.1.0.0-PAPYRUS
+ENV RSK_VERSION 3.2.0.0-IRIS
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
