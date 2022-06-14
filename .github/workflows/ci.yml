@@ -23,13 +23,16 @@ jobs:
 
           # Fail if any of this is empty
           [ -n "$CHECKPOINT" ] && [ -n "$DIFFICULTY" ] && [ -n "$NETWORK" ] &&
-              [ -n "$VERSION" ] || exit 1
+              [ -n "$VERSION" ] && [ -n "$UI_ITERATION" ] && 
+              [ -n "$UI_AUTHORIZERS" ] || exit 1
 
           echo "CHECKPOINT=$CHECKPOINT" >> $GITHUB_ENV
           echo "DIFFICULTY=$DIFFICULTY" >> $GITHUB_ENV
           echo "NETWORK=$NETWORK" >> $GITHUB_ENV
+          echo "UI_ITERATION=$UI_ITERATION" >> $GITHUB_ENV
+          echo "UI_AUTHORIZERS=$UI_AUTHORIZERS" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "BUILD_TAG_HSM2=${BUILD_TAG_HSM2:-master}" >> $GITHUB_ENV
+          echo "BUILD_TAG_POWHSM=${BUILD_TAG_POWHSM:-master}" >> $GITHUB_ENV
           echo "BASE_BRANCH=${BASE_BRANCH:-main}" >> $GITHUB_ENV
           echo "DO_PR=${DO_PR:-no}" >> $GITHUB_ENV
 
@@ -59,34 +62,50 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: rsksmart/rsk-powhsm
-          ref: ${{ env.BUILD_TAG_HSM2 }}
-          path: ${{ env.PR_WORKDIR }}/hsm2
+          ref: ${{ env.BUILD_TAG_POWHSM }}
+          path: ${{ env.PR_WORKDIR }}/powhsm
           token: ${{ secrets.GH_PAT }}
 
       - name: Prepare Docker images
         run: |
-          "$PR_WORKDIR/hsm2/docker/ledger/build"
-          "$PR_WORKDIR/hsm2/docker/mware/build"
-          if [ -d "$PR_WORKDIR/hsm2/docker/packer" ]; then
-            "$PR_WORKDIR/hsm2/docker/packer/build"
+          "$PR_WORKDIR/powhsm/docker/ledger/build"
+          "$PR_WORKDIR/powhsm/docker/mware/build"
+          if [ -d "$PR_WORKDIR/powhsm/docker/packer" ]; then
+            "$PR_WORKDIR/powhsm/docker/packer/build"
           fi
 
       - name: Build rsk-powhsm
         run: |
-          ./hsm-builder/build-dist "$PR_WORKDIR/hsm2" "$CHECKPOINT" "$DIFFICULTY" "$NETWORK"
+          ./hsm-builder/build-dist "$PR_WORKDIR/powhsm" "$CHECKPOINT" "$DIFFICULTY" "$NETWORK" "$UI_ITERATION" "$UI_AUTHORIZERS"
 
-          middleware_hashes=$(sha256sum \
-            federation_node/server/hsm2/bin/manager.tgz \
-            hsm-builder/dist/bin/adm.tgz \
-            hsm-builder/dist/bin/lbutils.tgz \
-            hsm-builder/dist/bin/signapp.tgz)
+          if [[ -f "hsm-builder/dist/bin/signapp.tgz" ]]; then
+            middleware_hashes=$(sha256sum \
+              federation_node/server/hsm2/bin/manager.tgz \
+              hsm-builder/dist/bin/adm.tgz \
+              hsm-builder/dist/bin/lbutils.tgz \
+              hsm-builder/dist/bin/signapp.tgz)
 
-          firmware_hashes=$(
-            ./hsm-builder/tools/signapp hash -a ../dist/firmware/signer.hex |
-              sed -n "/App hash:/s/App hash:/Signer hash:/gp"
-            ./hsm-builder/tools/signapp hash -a ../dist/firmware/ui.hex |
-              sed -n "/App hash:/s/App hash:/UI hash:/gp"
-          )
+            firmware_hashes=$(
+              ./hsm-builder/tools/signapp hash -a ../dist/firmware/signer.hex |
+                sed -n "/App hash:/s/App hash:/Signer hash:/gp"
+              ./hsm-builder/tools/signapp hash -a ../dist/firmware/ui.hex |
+                sed -n "/App hash:/s/App hash:/UI hash:/gp"
+            )
+          else
+            middleware_hashes=$(sha256sum \
+              federation_node/server/hsm2/bin/manager.tgz \
+              hsm-builder/dist/bin/adm.tgz \
+              hsm-builder/dist/bin/lbutils.tgz)
+
+            firmware_hashes=$(
+              $PR_WORKDIR/powhsm/docker/mware/do-notty-nousb /hsm2 "python middleware/signapp.py hash 
+              -s ledger/src/signer/bin/app.hex" |
+                sed -n "/Computed hash:/s/Computed hash:/Signer hash:/gp"
+              $PR_WORKDIR/powhsm/docker/mware/do-notty-nousb /hsm2 "python middleware/signapp.py hash 
+              -s ledger/src/ui/bin/token.hex" |
+                sed -n "/Computed hash:/s/Computed hash:/UI hash:/gp"
+            )
+          fi
 
           (cd "$PR_WORKDIR/powpeg-node-setup" && rm -fr federation_node hsm)
 
@@ -98,10 +117,12 @@ jobs:
           ----------------
 
           \`\`\`
-          Tag $BUILD_TAG_HSM2
+          Tag $BUILD_TAG_POWHSM
           Checkpoint $CHECKPOINT
           Difficulty $DIFFICULTY
           Network $NETWORK
+          UI iteration $UI_ITERATION
+          UI authorizers $UI_AUTHORIZERS
           \`\`\`
 
           Middleware

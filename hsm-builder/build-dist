@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo -e "\e[36mHSM2 Distribution builder\e[0m"
+echo -e "\e[36mpowHSM Distribution builder\e[0m"
 echo
 
 pushd $(dirname $0) > /dev/null
@@ -8,8 +8,8 @@ ROOT_DIR=$(pwd)
 popd > /dev/null
 
 if [[ $# -lt 1 ]]; then
-    echo -e "\e[31mPlease specify the local HSM2 repository path:"
-    echo -e "\e[91m$0 <hsm2_repo_root_path>\e[0m"
+    echo -e "\e[31mPlease specify the local powHSM repository path:"
+    echo -e "\e[91m$0 <powhsm_repo_root_path>\e[0m"
     exit 1
 fi
 
@@ -33,7 +33,7 @@ if [[ ${CI:-false} != true ]]; then
     fi
 fi
 
-if [[ $# -lt 4 ]]; then
+if [[ $# -lt 6 ]]; then
     echo -e "\e[32mPlease enter the checkpoint (e.g., 0x00f06dcff26ec8b4d373fbd53ee770e9348d9bd6a247ad4c86e82ceb3c2130ac):\e[93m"
     read CHECKPOINT
 
@@ -42,9 +42,16 @@ if [[ $# -lt 4 ]]; then
 
     echo -e "\e[32mPlease enter the network (e.g., testnet, mainnet):\e[93m"
     read NETWORK
+
+    echo -e "\e[32mPlease enter the UI iteration (e.g., 2) - ignored for versions < 3.0.0:\e[93m"
+    read UI_ITERATION
+
+    echo -e "\e[32mPlease enter the UI authorizers header file (e.g., testing) - ignored for versions < 3.0.0:\e[93m"
+    read UI_AUTHORIZERS
     echo
     echo -e "\e[32mYou are about to generate a distribution build from \e[93m'$REPO_DIR'\e[32m on tag \e[93m'$TAG'\e[0m"
-    echo -e "\e[32mwith checkpoint \e[93m$CHECKPOINT\e[32m, minimum difficulty \e[93m$DIFFICULTY\e[32m and network \e[93m$NETWORK\e[0m"
+    echo -e "\e[32mwith checkpoint \e[93m$CHECKPOINT\e[32m, minimum difficulty \e[93m$DIFFICULTY\e[32m, network \e[93m$NETWORK\e[32m, \e[0m"
+    echo -e "\e[32mUI iteration \e[93m$UI_ITERATION\e[32m and UI authorizers \e[93m$UI_AUTHORIZERS\e[32m\e[0m"
     echo -e "\e[93mAre you sure? (yes/no)\e[0m"
     read SURE
 
@@ -56,22 +63,31 @@ else
     CHECKPOINT=$2
     DIFFICULTY=$3
     NETWORK=$4
+    UI_ITERATION=$5
+    UI_AUTHORIZERS=$6
 fi
 
 rm -rf $DEST_DIR
-./build-dist $DEST_DIR $CHECKPOINT $DIFFICULTY $NETWORK
+./build-dist $DEST_DIR $CHECKPOINT $DIFFICULTY $NETWORK $UI_ITERATION $UI_AUTHORIZERS
 mkdir -p $MANAGERBIN_DIR
-mkdir -p $TOOLSBIN_DIR
 mv -f $BIN_DIR/manager.tgz $MANAGERBIN_DIR/manager.tgz
-cp -f $BIN_DIR/signapp.tgz $TOOLSBIN_DIR/signapp.tgz
+
+if [[ -f "$BIN_DIR/signapp.tgz" ]]; then
+    mkdir -p $TOOLSBIN_DIR
+    cp -f $BIN_DIR/signapp.tgz $TOOLSBIN_DIR/signapp.tgz
+fi
 
 rm $DEST_DIR/README.md
 mv $DEST_DIR/README-cli.md $DEST_DIR/README.md
 
 echo -e "\e[33mSetup files saved under \e[93m$DEST_DIR\e[0m"
 echo -e "\e[33mManager binary saved under \e[93m$MANAGERBIN_DIR\e[0m"
-echo -e "\e[33mFirmware signer binary saved under \e[93m$TOOLSBIN_DIR\e[0m"
-echo -e "\e[36mPlease don't forget to sign the firmware located under \e[93m$FIRMWARE_DIR\e[0m"
+if [[ -f "$BIN_DIR/signapp.tgz" ]]; then
+    echo -e "\e[33mFirmware signer binary saved under \e[93m$TOOLSBIN_DIR\e[0m"
+    echo -e "\e[36mPlease don't forget to sign the firmware located under \e[93m$FIRMWARE_DIR\e[0m"
+else
+    echo -e "\e[36mPlease don't forget to authorize the signer located under \e[93m$FIRMWARE_DIR\e[0m"
+fi
 echo -e "\e[32mBuild done.\e[0m"
 
 popd > /dev/null
