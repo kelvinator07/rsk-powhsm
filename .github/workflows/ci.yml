@@ -78,34 +78,24 @@ jobs:
         run: |
           ./hsm-builder/build-dist "$PR_WORKDIR/powhsm" "$CHECKPOINT" "$DIFFICULTY" "$NETWORK" "$UI_ITERATION" "$UI_AUTHORIZERS"
 
-          if [[ -f "hsm-builder/dist/bin/signapp.tgz" ]]; then
-            middleware_hashes=$(sha256sum \
-              federation_node/server/hsm2/bin/manager.tgz \
-              hsm-builder/dist/bin/adm.tgz \
-              hsm-builder/dist/bin/lbutils.tgz \
-              hsm-builder/dist/bin/signapp.tgz)
-
-            firmware_hashes=$(
-              ./hsm-builder/tools/signapp hash -a ../dist/firmware/signer.hex |
-                sed -n "/App hash:/s/App hash:/Signer hash:/gp"
-              ./hsm-builder/tools/signapp hash -a ../dist/firmware/ui.hex |
-                sed -n "/App hash:/s/App hash:/UI hash:/gp"
-            )
-          else
-            middleware_hashes=$(sha256sum \
-              federation_node/server/hsm2/bin/manager.tgz \
-              hsm-builder/dist/bin/adm.tgz \
-              hsm-builder/dist/bin/lbutils.tgz)
-
-            firmware_hashes=$(
-              $PR_WORKDIR/powhsm/docker/mware/do-notty-nousb /hsm2 "python middleware/signapp.py hash 
-              -s ledger/src/signer/bin/app.hex" |
-                sed -n "/Computed hash:/s/Computed hash:/Signer hash:/gp"
-              $PR_WORKDIR/powhsm/docker/mware/do-notty-nousb /hsm2 "python middleware/signapp.py hash 
-              -s ledger/src/ui/bin/token.hex" |
-                sed -n "/Computed hash:/s/Computed hash:/UI hash:/gp"
-            )
+          if [[ ! -f "hsm-builder/dist/bin/signapp.tgz" ]]; then
+            mkdir -p ./hsm-builder/tools/bin/
+            cp ./hsm-builder/signapp/signapp.tgz ./hsm-builder/tools/bin/
+            cp ./hsm-builder/signapp/signapp.tgz ./hsm-builder/dist/bin/signapp.tgz
           fi
+
+          middleware_hashes=$(sha256sum \
+            federation_node/server/hsm2/bin/manager.tgz \
+            hsm-builder/dist/bin/adm.tgz \
+            hsm-builder/dist/bin/lbutils.tgz \
+            hsm-builder/dist/bin/signapp.tgz)
+
+          firmware_hashes=$(
+            ./hsm-builder/tools/signapp hash -a ./hsm-builder/dist/firmware/signer.hex |
+              sed -n "/Computed hash:\|App hash:/s/Computed hash:\|App hash:/Signer hash:/gp"
+            ./hsm-builder/tools/signapp hash -a ./hsm-builder/dist/firmware/ui.hex |
+              sed -n "/Computed hash:\|App hash:/s/Computed hash:\|App hash:/UI hash:/gp"
+          )
 
           (cd "$PR_WORKDIR/powpeg-node-setup" && rm -fr federation_node hsm)
 

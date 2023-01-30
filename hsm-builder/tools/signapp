@@ -9,6 +9,7 @@ pushd $(dirname $0) > /dev/null
 TOOLS_DIR=$(pwd)
 BUILD_DIR=$TOOLS_DIR/..
 popd > /dev/null
+CURR_DIR=$(pwd)
 
 DOCKER_IMAGE=hsm2:runtime
 
@@ -22,7 +23,7 @@ rm -rf $TOOLS_DIR/bin/signapp
 mkdir -p $TOOLS_DIR/bin/signapp
 tar -xzmf $TOOLS_DIR/bin/signapp.tgz -C $TOOLS_DIR/bin/signapp
 
-docker run -t --rm -v $BUILD_DIR:/build -v /dev/bus/usb:/dev/bus/usb --privileged -w /build/tools $DOCKER_IMAGE ./bin/signapp/signapp $@
+docker run -t --rm -v $BUILD_DIR:/build -v $CURR_DIR:/work -v /dev/bus/usb:/dev/bus/usb --privileged -w /work $DOCKER_IMAGE /build/tools/bin/signapp/signapp $@
 
 # Cleanup signapp.tgz
 rm -rf $TOOLS_DIR/bin/signapp
